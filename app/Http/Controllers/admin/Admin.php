@@ -32,7 +32,7 @@ class Admin extends Controller
         $data['ordermouth'] = $this->getCompletedOrdersTotal('month');
         $data['orderyear'] = $this->getCompletedOrdersTotal('year');
         
-        // คำนวณเงินสดและเงินโอน
+        // คำนวณเงินสดและเงินโอน.
         $data['moneyDay'] = $this->getPaymentTotalsByType(0, 'day'); // เงินสด
         $data['transferDay'] = $this->getPaymentTotalsByType(1, 'day'); // เงินโอน + สลิป
 
