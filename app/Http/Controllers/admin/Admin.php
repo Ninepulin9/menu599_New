@@ -85,66 +85,68 @@ class Admin extends Controller
     $data['config'] = Config::first();
     return view('dashboard', $data);
 }
-    public function ListOrder()
-    {
-        $data = [
-            'status' => false,
-            'message' => '',
-            'data' => []
-        ];
-        $order = DB::table('orders as o')
-            ->select(
-                'o.table_id',
-                DB::raw('SUM(o.total) as total'),
-                DB::raw('MAX(o.created_at) as created_at'),
-                DB::raw('MAX(o.status) as status'),
-                DB::raw('MAX(o.remark) as remark'),
-                DB::raw('SUM(CASE WHEN o.status = 1 THEN 1 ELSE 0 END) as has_status_1')
-            )
-            ->whereNotNull('o.table_id')
-            ->whereIn('o.status', [1, 2])
-            ->groupBy('o.table_id')
-            ->orderByDesc('has_status_1')
-            ->orderByDesc(DB::raw('MAX(o.created_at)'))
-            ->get();
+   public function ListOrder()
+{
+    $data = [
+        'status' => false,
+        'message' => '',
+        'data' => []
+    ];
+    
+    $order = DB::table('orders as o')
+        ->select(
+            'o.table_id',
+            DB::raw('SUM(o.total) as total'),
+            DB::raw('MAX(o.created_at) as created_at'),
+            DB::raw('MAX(o.status) as status'),
+            DB::raw('GROUP_CONCAT(DISTINCT o.remark SEPARATOR " | ") as remark'),
+            DB::raw('SUM(CASE WHEN o.status = 1 THEN 1 ELSE 0 END) as has_status_1')
+        )
+        ->whereNotNull('o.table_id')
+        ->whereIn('o.status', [1, 2])
+        ->groupBy('o.table_id')
+        ->orderByDesc('has_status_1')
+        ->orderByDesc(DB::raw('MAX(o.created_at)'))
+        ->get();
 
-        if (count($order) > 0) {
-            $info = [];
-            foreach ($order as $rs) {
-                $status = '';
-                $pay = '';
-                if ($rs->has_status_1 > 0) {
-                    $status = '<button type="button" class="btn btn-sm btn-primary update-status" data-id="' . $rs->table_id . '">กำลังทำอาหาร</button>';
-                } else {
-                    $status = '<button class="btn btn-sm btn-success">ออเดอร์สำเร็จแล้ว</button>';
-                }
-
-                if ($rs->status != 3) {
-                    $pay = '<a href="' . route('printOrderAdmin', $rs->table_id) . '" target="_blank" type="button" class="btn btn-sm btn-outline-primary m-1">ปริ้นออเดอร์</a>
-                    <a href="' . route('printOrderAdminCook', $rs->table_id) . '" target="_blank" type="button" class="btn btn-sm btn-outline-primary m-1">ปริ้นออเดอร์ในครัว</a>
-                    <button data-id="' . $rs->table_id . '" data-total="' . $rs->total . '" type="button" class="btn btn-sm btn-outline-success modalPay">ชำระเงิน</button>';
-                }
-                $flag_order = '<button class="btn btn-sm btn-success">สั่งหน้าร้าน</button>';
-                $action = '<button data-id="' . $rs->table_id . '" type="button" class="btn btn-sm btn-outline-primary modalShow m-1">รายละเอียด</button>' . $pay;
-                $table = Table::find($rs->table_id);
-                $info[] = [
-                    'flag_order' => $flag_order,
-                    'table_id' => $table->table_number,
-                    'total' => $rs->total,
-                    'remark' => $rs->remark,
-                    'status' => $status,
-                    'created' => $this->DateThai($rs->created_at),
-                    'action' => $action
-                ];
+    if (count($order) > 0) {
+        $info = [];
+        foreach ($order as $rs) {
+            $status = '';
+            $pay = '';
+            if ($rs->has_status_1 > 0) {
+                $status = '<button type="button" class="btn btn-sm btn-primary update-status" data-id="' . $rs->table_id . '">กำลังทำอาหาร</button>';
+            } else {
+                $status = '<button class="btn btn-sm btn-success">ออเดอร์สำเร็จแล้ว</button>';
             }
-            $data = [
-                'data' => $info,
-                'status' => true,
-                'message' => 'success'
+
+            if ($rs->status != 3) {
+                $pay = '<a href="' . route('printOrderAdmin', $rs->table_id) . '" target="_blank" type="button" class="btn btn-sm btn-outline-primary m-1">ปริ้นออเดอร์</a>
+                <a href="' . route('printOrderAdminCook', $rs->table_id) . '" target="_blank" type="button" class="btn btn-sm btn-outline-primary m-1">ปริ้นออเดอร์ในครัว</a>
+                <button data-id="' . $rs->table_id . '" data-total="' . $rs->total . '" type="button" class="btn btn-sm btn-outline-success modalPay">ชำระเงิน</button>';
+            }
+            $flag_order = '<button class="btn btn-sm btn-success">สั่งหน้าร้าน</button>';
+            $action = '<button data-id="' . $rs->table_id . '" type="button" class="btn btn-sm btn-outline-primary modalShow m-1">รายละเอียด</button>' . $pay;
+            $table = Table::find($rs->table_id);
+            
+            $info[] = [
+                'flag_order' => $flag_order,
+                'table_id' => $table->table_number,
+                'total' => $rs->total,
+                'remark' => !empty($rs->remark) ? $rs->remark : '-',
+                'status' => $status,
+                'created' => $this->DateThai($rs->created_at),
+                'action' => $action
             ];
         }
-        return response()->json($data);
+        $data = [
+            'data' => $info,
+            'status' => true,
+            'message' => 'success'
+        ];
     }
+    return response()->json($data);
+}
 
     public function listOrderDetail(Request $request)
     {
