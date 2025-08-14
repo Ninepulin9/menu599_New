@@ -202,7 +202,7 @@ class Admin extends Controller
         }
         echo $info;
     }
-
+/
     public function printOrderAdmin($table_id)
     {
         $config = Config::first();
