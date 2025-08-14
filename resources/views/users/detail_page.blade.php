@@ -17,7 +17,7 @@
     <style>
 
 .header-section {
-    background: linear-gradient(135deg, #00bcd4 0%, #0097a7 100%);
+    background: linear-gradient(135deg, #6cd4e2ff 0%, #8fd8e0ff 100%);
     padding: 15px 15px 20px 15px;
     border-radius: 0 0 25px 25px;
     box-shadow: 0 3px 12px rgba(0,0,0,0.1);
@@ -375,7 +375,6 @@
     text-align: center;
 }
 
-/* Item Card in Offcanvas */
 .item-card {
     cursor: pointer;
     transition: background-color 0.2s ease;
@@ -385,16 +384,9 @@
     background-color: #f8f9fa;
 }
 
-/* ================================
-   RESPONSIVE DESIGN
-   ================================ */
 
 @media (max-width: 768px) {
-    /* Header adjustments */
-    .header-section {
-        padding: 12px 12px 16px 12px;
-        margin: -12px -12px 12px -12px;
-    }
+    
     
     .page-title {
         font-size: 20px;
