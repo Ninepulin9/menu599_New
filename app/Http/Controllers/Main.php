@@ -109,108 +109,142 @@ class Main extends Controller
     }
 
     public function SendOrder(Request $request)
-    {
-        $data = [
-            'status' => false,
-            'message' => 'สั่งออเดอร์ไม่สำเร็จ',
-        ];
+{
+    // เพิ่ม Debug
+    \Log::info('SendOrder Debug:', [
+        'request_data' => $request->all(),
+        'cart' => $request->input('cart')
+    ]);
+    
+    $data = [
+        'status' => false,
+        'message' => 'สั่งออเดอร์ไม่สำเร็จ',
+    ];
+    
+    $orderData = $request->input('cart');
+    $remark = $request->input('remark', ''); // remark ทั่วไป (ถ้ามี)
+    $item = array();
+    $total = 0;
+    $allRemarks = []; // เก็บ remark จากทุกเมนู
+    
+    // ตรวจสอบเมนูก่อนทำการสั่ง
+    foreach ($orderData as $key => $order) {
+        $menu = Menu::find($order['id']);
         
-        $orderData = $request->input('cart');
-        $remark = $request->input('remark');
-        $item = array();
-        $total = 0;
-        
-        // ตรวจสอบเมนูก่อนทำการสั่ง
-        foreach ($orderData as $key => $order) {
-            $menu = Menu::find($order['id']);
-            
-            // ตรวจสอบว่าเมนูยังสามารถสั่งได้หรือไม่
-            if (!$menu || !$menu->isAvailable()) {
-                $menuName = $menu ? $menu->name : 'ไม่พบเมนู';
-                $message = $menu ? $menu->getAvailabilityMessage() : 'ไม่พบเมนู';
-                $data['message'] = "เมนู '{$menuName}' ไม่สามารถสั่งได้ในขณะนี้: {$message}";
-                return response()->json($data);
-            }
-            
-            // ตรวจสอบสต็อก
-            if (!$menu->hasStock($order['amount'])) {
-                $data['message'] = "เมนู '{$menu->name}' มีจำนวนไม่เพียงพอ";
-                return response()->json($data);
-            }
-            
-            $item[$key] = [
-                'menu_id' => $order['id'],
-                'quantity' => $order['amount'],
-                'price' => $order['total_price']
-            ];
-            
-            if (!empty($order['options'])) {
-                foreach ($order['options'] as $rs) {
-                    $item[$key]['option'][] = $rs['id'];
-                }
-            } else {
-                $item[$key]['option'] = [];
-            }
-            $total = $total + $order['total_price'];
+        // ตรวจสอบว่าเมนูยังสามารถสั่งได้หรือไม่
+        if (!$menu || !$menu->isAvailable()) {
+            $menuName = $menu ? $menu->name : 'ไม่พบเมนู';
+            $message = $menu ? $menu->getAvailabilityMessage() : 'ไม่พบเมนู';
+            $data['message'] = "เมนู '{$menuName}' ไม่สามารถสั่งได้ในขณะนี้: {$message}";
+            return response()->json($data);
         }
         
-        if (!empty($item)) {
-            $order = new Orders();
-            $order->table_id = session('table_id') ?? '1';
-            $order->total = $total;
-            $order->remark = $remark;
-            $order->status = 1;
-            
-            if ($order->save()) {
-                foreach ($item as $rs) {
-                    $orderdetail = new OrdersDetails();
-                    $orderdetail->order_id = $order->id;
-                    $orderdetail->menu_id = $rs['menu_id'];
-                    $orderdetail->quantity = $rs['quantity'];
-                    $orderdetail->price = $rs['price'];
+        // ตรวจสอบสต็อก
+        if (!$menu->hasStock($order['amount'])) {
+            $data['message'] = "เมนู '{$menu->name}' มีจำนวนไม่เพียงพอ";
+            return response()->json($data);
+        }
+        
+        // รวบรวม remark จากแต่ละเมนู
+        if (!empty($order['note'])) {
+            $allRemarks[] = $menu->name . ': ' . $order['note'];
+        }
+        
+        $item[$key] = [
+            'menu_id' => $order['id'],
+            'quantity' => $order['amount'],
+            'price' => $order['total_price']
+        ];
+        
+        if (!empty($order['options'])) {
+            foreach ($order['options'] as $rs) {
+                $item[$key]['option'][] = $rs['id'];
+            }
+        } else {
+            $item[$key]['option'] = [];
+        }
+        $total = $total + $order['total_price'];
+    }
+    
+    // รวม remark ทั้งหมด
+    $combinedRemark = '';
+    
+    // เพิ่ม remark ทั่วไป (ถ้ามี)
+    if (!empty($remark)) {
+        $combinedRemark .= $remark;
+    }
+    
+    // เพิ่ม remark จากแต่ละเมนู
+    if (!empty($allRemarks)) {
+        if (!empty($combinedRemark)) {
+            $combinedRemark .= ' | ';
+        }
+        $combinedRemark .= implode(' | ', $allRemarks);
+    }
+    
+    \Log::info('Combined Remarks:', [
+        'general_remark' => $remark,
+        'menu_remarks' => $allRemarks,
+        'combined_remark' => $combinedRemark
+    ]);
+    
+    if (!empty($item)) {
+        $order = new Orders();
+        $order->table_id = session('table_id') ?? '1';
+        $order->total = $total;
+        $order->remark = $combinedRemark; 
+        $order->status = 1;
+        
+        if ($order->save()) {
+            foreach ($item as $rs) {
+                $orderdetail = new OrdersDetails();
+                $orderdetail->order_id = $order->id;
+                $orderdetail->menu_id = $rs['menu_id'];
+                $orderdetail->quantity = $rs['quantity'];
+                $orderdetail->price = $rs['price'];
+                
+                if ($orderdetail->save()) {
+                    // ลดสต็อกเมนู
+                    $menu = Menu::find($rs['menu_id']);
+                    if ($menu) {
+                        $menu->decreaseStock($rs['quantity']);
+                    }
                     
-                    if ($orderdetail->save()) {
-                        // ลดสต็อกเมนู
-                        $menu = Menu::find($rs['menu_id']);
-                        if ($menu) {
-                            $menu->decreaseStock($rs['quantity']);
-                        }
+                    foreach ($rs['option'] as $key => $option) {
+                        $orderOption = new OrdersOption();
+                        $orderOption->order_detail_id = $orderdetail->id;
+                        $orderOption->option_id = $option;
+                        $orderOption->save();
                         
-                        foreach ($rs['option'] as $key => $option) {
-                            $orderOption = new OrdersOption();
-                            $orderOption->order_detail_id = $orderdetail->id;
-                            $orderOption->option_id = $option;
-                            $orderOption->save();
-                            
-                            $menuStock = MenuStock::where('menu_option_id', $option)->get();
-                            if ($menuStock->isNotEmpty()) {
-                                foreach ($menuStock as $stock_rs) {
-                                    $stock = Stock::find($stock_rs->stock_id);
-                                    $stock->amount = $stock->amount - ($stock_rs->amount * $rs['quantity']);
-                                    if ($stock->save()) {
-                                        $log_stock = new LogStock();
-                                        $log_stock->stock_id = $stock_rs->stock_id;
-                                        $log_stock->order_id = $order->id;
-                                        $log_stock->menu_option_id = $option;
-                                        $log_stock->old_amount = $stock_rs->amount;
-                                        $log_stock->amount = ($stock_rs->amount * $rs['quantity']);
-                                        $log_stock->status = 2;
-                                        $log_stock->save();
-                                    }
+                        $menuStock = MenuStock::where('menu_option_id', $option)->get();
+                        if ($menuStock->isNotEmpty()) {
+                            foreach ($menuStock as $stock_rs) {
+                                $stock = Stock::find($stock_rs->stock_id);
+                                $stock->amount = $stock->amount - ($stock_rs->amount * $rs['quantity']);
+                                if ($stock->save()) {
+                                    $log_stock = new LogStock();
+                                    $log_stock->stock_id = $stock_rs->stock_id;
+                                    $log_stock->order_id = $order->id;
+                                    $log_stock->menu_option_id = $option;
+                                    $log_stock->old_amount = $stock_rs->amount;
+                                    $log_stock->amount = ($stock_rs->amount * $rs['quantity']);
+                                    $log_stock->status = 2;
+                                    $log_stock->save();
                                 }
                             }
                         }
                     }
                 }
             }
-            event(new OrderCreated(['📦 มีออเดอร์ใหม่']));
-            $data = [
-                'status' => true,
-                'message' => 'สั่งออเดอร์เรียบร้อยแล้ว',
-            ];
         }
-        return response()->json($data);
+        event(new OrderCreated(['📦 มีออเดอร์ใหม่']));
+        $data = [
+            'status' => true,
+            'message' => 'สั่งออเดอร์เรียบร้อยแล้ว',
+        ];
     }
+    return response()->json($data);
+}
 
     public function sendEmp()
     {
