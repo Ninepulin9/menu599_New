@@ -18,7 +18,6 @@
         .badge { display:inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; vertical-align: middle; }
         .badge.ok { background:#d4edda; color:#155724; }
         .badge.err { background:#fdecea; color:#611a15; }
-        /* สำหรับ preview HTML จาก payload */
         .pv-line { border-top: 1px dashed #000; margin: 8px 0; }
         .pv-text { margin: 2px 0; }
         .pv-text.bold { font-weight: bold; }
@@ -46,11 +45,9 @@
     </div>
 
     <script>
-        // ====== รับข้อมูลจาก Blade ======
         const jsonData = {!! $jsonData !!};
         const data = jsonData;
 
-        // ====== Flag ความสามารถ (ตอนนี้ปิด image/qrcode/barcode ตาม requirement) ======
         const FEATURE_IMAGE   = false;
         const FEATURE_QRCODE  = false;
         const FEATURE_BARCODE = false;
@@ -66,22 +63,16 @@
             const date = new Date(dateTime);
             return date.toLocaleDateString('th-TH') + ' ' + date.toLocaleTimeString('th-TH');
         }
+        
         function groupOrderItems(orderItems) {
-            const grouped = {};
-            (orderItems || []).forEach(item => {
-                let key = `${item.menu ? item.menu.name : 'เมนู'}_${item.price}`;
-                if (item.option && item.option.length > 0) {
-                    const optionKeys = item.option.map(opt => opt?.option?.type || '').sort().join(',');
-                    key += `_${optionKeys}`;
-                }
-                if (item.remark) key += `_${item.remark}`;
-                if (grouped[key]) grouped[key].quantity = parseInt(grouped[key].quantity) + parseInt(item.quantity || 0);
-                else grouped[key] = { ...item, quantity: parseInt(item.quantity || 0) };
-            });
-            return Object.values(grouped);
+            return (orderItems || []).map((item, index) => ({
+                ...item,
+                quantity: parseInt(item.quantity || 1),
+                itemIndex: index + 1 
+            }));
         }
 
-        // ====== JSBridge (ตามสเปค) ======
+        // ====== JSBridge () ======
         function getBridge() {
             if (window.posRegisterInterface) return window.posRegisterInterface; 
             if (window.webkit?.messageHandlers?.posRegisterInterface) return window.webkit.messageHandlers.posRegisterInterface; 
@@ -109,8 +100,7 @@
             }
         }
 
-        // Native จะเรียกอันนี้กลับมา
-        // ตัวอย่าง: onPrinterStatusUpdate(true);
+      
         let PRINTER_ONLINE = null;
         window.onPrinterStatusUpdate = function(online) {
             PRINTER_ONLINE = !!online;
@@ -122,12 +112,9 @@
         };
 
         function checkPrinterStatus() {
-            // ถ้ามี Bridge ก็ส่ง STATUS_PRINTER
             if (getBridge()) {
                 sendCommand("STATUS_PRINTER", []);
-                // NOTE: รอ native เรียก onPrinterStatusUpdate(true/false) กลับมา
             } else {
-                // ไม่มี bridge
                 window.onPrinterStatusUpdate(false);
             }
         }
@@ -156,30 +143,48 @@
 
         function buildTableRowsFromOrder(order) {
             const rows = [];
-            const groupedItems = groupOrderItems(order);
-            groupedItems.forEach(it => {
+            const items = groupOrderItems(order);
+            
+            items.forEach((it) => {
                 const total = parseFloat(it.price || 0) * parseInt(it.quantity || 0);
+                const itemName = composeItemNameCompact(it);
+                
                 rows.push({
                     type: "table",
                     columns: [
-                        { text: composeItemName(it), width: 60 },
+                        { text: itemName, width: 60 },
                         { text: String(it.quantity || 0), width: 20 },
                         { text: formatPrice(total), width: 20 }
                     ]
                 });
+                
+                // เพิ่ม remark ของแต่ละเมนูใต้รายการ (ถ้ามี)
+                if (it.remark && it.remark.trim()) {
+                    rows.push({
+                        type: "text",
+                        data: `   📝 ${it.remark.trim()}`,
+                        align: "left"
+                    });
+                }
             });
             return rows;
         }
 
-        function composeItemName(item) {
-            let name = (item.menu && item.menu.name) ? item.menu.name : 'เมนู';
+        // ฟังก์ชันแสดงรายการแบบกระชับพร้อมหมายเลข (ไม่แสดง remark ในชื่อ)
+        function composeItemNameCompact(item) {
+            let name = `${item.itemIndex}. ${(item.menu && item.menu.name) ? item.menu.name : 'เมนู'}`;
+            
+            // เพิ่ม options (ถ้ามี)
             if (item.option && item.option.length > 0) {
                 const opts = item.option
                     .map(o => o?.option?.type)
                     .filter(Boolean);
-                if (opts.length) name += ` (+${opts.join(', ')})`;
+                if (opts.length) {
+                    name += ` (+${opts.join(', ')})`;
+                }
             }
-            if (item.remark) name += ` [${item.remark}]`;
+            
+            
             return name;
         }
 
@@ -200,11 +205,10 @@
         }
 
         function calcTotal(order) {
-            const groupedItems = groupOrderItems(order || []);
-            return groupedItems.reduce((sum, it) => sum + parseFloat(it.price || 0) * parseInt(it.quantity || 0), 0);
+            const items = groupOrderItems(order || []);
+            return items.reduce((sum, it) => sum + parseFloat(it.price || 0) * parseInt(it.quantity || 0), 0);
         }
 
-        // สร้าง payload ตามชนิดใบเสร็จใน data.type
         function buildPrintPayloadByType(data) {
             const payload = [];
             const type = data?.type || 'normal';
@@ -213,11 +217,21 @@
                 payload.push(...buildHeaderBlock(data?.config?.name || 'ใบเสร็จรับเงิน', data?.pay?.payment_number, data?.pay?.created_at));
                 payload.push(...buildTableHeader());
                 payload.push(...buildTableRowsFromOrder(data?.order || []));
+                
+                const remark = data?.remark;
+                if (remark && remark.trim()) {
+                    payload.push({ type: "newline" });
+                    payload.push({ type: "text", data: "หมายเหตุ:", align: "left", bold: true });
+                    payload.push({ type: "text", data: remark.trim(), align: "left" });
+                    payload.push({ type: "newline" });
+                }
+                
                 const total = parseFloat(data?.pay?.total ?? calcTotal(data?.order || []));
                 payload.push(...buildTotalsBlock(total, null));
             }
             else if (type === 'taxfull' || type === 'tax_full' || type === 'tax') {
                 payload.push(...buildHeaderBlock((data?.config?.name || 'ร้านอาหาร') + ' - ใบกำกับภาษี', data?.pay?.payment_number, data?.pay?.created_at));
+                
                 if (data?.tax_full) {
                     payload.push({ type: "text", data: `ชื่อ: ${data.tax_full.name}`, align: "left" });
                     payload.push({ type: "text", data: `เบอร์โทร: ${data.tax_full.tel}`, align: "left" });
@@ -225,6 +239,7 @@
                     payload.push({ type: "text", data: `ที่อยู่: ${data.tax_full.address}`, align: "left" });
                     payload.push({ type: "line", bold: true });
                 }
+                
                 payload.push(...buildTableHeader());
                 payload.push(...buildTableRowsFromOrder(data?.order || []));
                 const total = calcTotal(data?.order || []);
@@ -234,6 +249,15 @@
                 payload.push(...buildHeaderBlock(data?.config?.name || 'สรุปออเดอร์ (แอดมิน)', `โต๊ะ #${data?.table?.table_number || data?.table_id || '-'}`, new Date()));
                 payload.push(...buildTableHeader());
                 payload.push(...buildTableRowsFromOrder(data?.order_details || []));
+                
+                const remark = data?.remark;
+                if (remark && remark.trim()) {
+                    payload.push({ type: "newline" });
+                    payload.push({ type: "text", data: "หมายเหตุ:", align: "left", bold: true });
+                    payload.push({ type: "text", data: remark.trim(), align: "left" });
+                    payload.push({ type: "newline" });
+                }
+                
                 const total = calcTotal(data?.order_details || []);
                 payload.push(...buildTotalsBlock(total, null));
             }
@@ -242,23 +266,47 @@
                 payload.push({ type: "text", data: `โต๊ะ #${data?.table?.table_number || data?.table_id || '-'}`, align: "center", bold: true });
                 payload.push({ type: "text", data: `วันที่: ${formatDateTime(new Date())}`, align: "center" });
                 payload.push({ type: "line", bold: true });
-                const groupedItems = groupOrderItems(data?.order_details || []);
-                if (groupedItems.length === 0) {
+                
+                const items = groupOrderItems(data?.order_details || []);
+                if (items.length === 0) {
                     payload.push({ type: "text", data: '— ไม่มีรายการ —', align: "center" });
                 } else {
-                    groupedItems.forEach((it, idx) => {
-                        payload.push({ type: "text", data: `${idx+1}. ${composeItemName(it)}`, align: "left", bold: true, size: 2 });
+                    items.forEach((it) => {
+                        let menuName = `${it.itemIndex}. ${it.menu?.name || 'เมนู'}`;
+                        if (it.option && it.option.length > 0) {
+                            const opts = it.option.map(o => o?.option?.type).filter(Boolean);
+                            if (opts.length) menuName += ` (+${opts.join(', ')})`;
+                        }
+                        
+                        payload.push({ type: "text", data: menuName, align: "left", bold: true, size: 2 });
                         payload.push({ type: "text", data: `จำนวน: ${it.quantity}`, align: "left", bold: true });
+                        
+                        if (it.remark && it.remark.trim()) {
+                            payload.push({ type: "text", data: `📝 หมายเหตุ: ${it.remark.trim()}`, align: "left", bold: true });
+                        }
+                        
                         payload.push({ type: "line" });
                     });
                 }
+                
+                const generalRemark = data?.remark;
+                if (generalRemark && generalRemark.trim()) {
+                    payload.push({ type: "newline" });
+                    payload.push({ type: "text", data: "🗒️ หมายเหตุ:", align: "left", bold: true });
+                    payload.push({ type: "text", data: generalRemark.trim(), align: "left" });
+                }
+            }
+            else if (type === 'slip_payment') {
+                payload.push(...buildHeaderBlock(data?.config?.name || 'ใบเสร็จรับเงิน (สลิป)', data?.pay?.payment_number, data?.pay?.created_at));
+                payload.push(...buildTableHeader());
+                payload.push(...buildTableRowsFromOrder(data?.order || []));
+                const total = parseFloat(data?.pay?.total ?? calcTotal(data?.order || []));
+                payload.push(...buildTotalsBlock(total, null));
             }
             else {
-                // default -> normal
                 return buildPrintPayloadByType({ ...data, type: 'normal' });
             }
 
-            // ไม่มี QR/Barcode/Image ใน payload (ตาม requirement)
             return payload.filter(it => {
                 if (it.type === 'image'   && !FEATURE_IMAGE) return false;
                 if (it.type === 'qrcode'  && !FEATURE_QRCODE) return false;
@@ -267,7 +315,7 @@
             });
         }
 
-        // ====== Preview HTML จาก payload (ใช้แสดงผล + QZ fallback) ======
+        // ====== Preview HTML จาก payload  ======
         function payloadToHTML(payload) {
             let html = '';
             const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -292,7 +340,6 @@
                         break;
                     }
                     case 'table': {
-                        // simple flex row
                         html += `<div class="pv-row">`;
                         (item.columns || []).forEach(col => {
                             const w = Math.max(0, Math.min(100, parseFloat(col.width || 0)));
@@ -304,7 +351,6 @@
                     case 'image':
                     case 'qrcode':
                     case 'barcode': {
-                        // ปิดไว้ ไม่แสดง
                         break;
                     }
                     default: break;
@@ -367,7 +413,7 @@
                 handlePrint().catch(console.error);
             });
 
-            // Auto print เฉพาะบางชนิด (ตามเดิม)
+            // Auto print 
             if (!isInIframe) {
                 const t = (data?.type || '').toLowerCase();
                 if (t === 'order_cook') {
@@ -404,7 +450,6 @@
             }
         });
 
-        // กัน error เงียบ
         window.addEventListener('error', function(e) {
             console.error('JavaScript Error:', e?.error || e);
             document.getElementById('print-content').innerHTML =

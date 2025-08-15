@@ -236,63 +236,119 @@ class Admin extends Controller
     echo $info;
 }
 
-    public function printOrderAdmin($table_id)
-    {
-        $config = Config::first();
-        $orders = Orders::where('table_id', $table_id)
-            ->whereIn('status', [1, 2])
-            ->get();
+    // แก้ไข method printOrderAdmin ใน Admin.php
+public function printOrderAdmin($table_id)
+{
+    $config = Config::first();
+    $orders = Orders::where('table_id', $table_id)
+        ->whereIn('status', [1, 2])
+        ->get();
 
-        $order_details = [];
-        foreach ($orders as $order) {
-            $details = OrdersDetails::where('order_id', $order->id)
-                ->with('menu', 'option.option')
-                ->get();
-            $order_details = array_merge($order_details, $details->toArray());
+    $order_details = [];
+    $combined_remark = ''; // เก็บ remark รวม
+    $menu_remarks = []; // เก็บ remark ของแต่ละเมนู
+    
+    foreach ($orders as $order) {
+        // รวบรวม remark ของออเดอร์
+        if (!empty($order->remark)) {
+            $combined_remark = $order->remark;
         }
-
-        $table = Table::find($table_id);
-
-        $data = [
-            'config' => $config,
-            'orders' => $orders,
-            'order_details' => $order_details,
-            'table' => $table,
-            'type' => 'order_admin'
-        ];
-        return view('print_web', ['jsonData' => json_encode($data)]);
+        
+        $details = OrdersDetails::where('order_id', $order->id)
+            ->with('menu', 'option.option')
+            ->get();
+            
+        foreach ($details as $detail) {
+            // เพิ่ม remark ของเมนูแต่ละรายการ
+            if (!empty($detail->remark)) {
+                $menu_remarks[] = $detail->menu->name . ': ' . $detail->remark;
+            }
+        }
+        
+        $order_details = array_merge($order_details, $details->toArray());
     }
+    
+    // รวม remark ทั้งหมด
+    $final_remark = '';
+    if (!empty($combined_remark)) {
+        $final_remark = $combined_remark;
+    }
+    if (!empty($menu_remarks)) {
+        if (!empty($final_remark)) {
+            $final_remark .= ' | ';
+        }
+        $final_remark .= implode(' | ', $menu_remarks);
+    }
+
+    $table = Table::find($table_id);
+
+    $data = [
+        'config' => $config,
+        'orders' => $orders,
+        'order_details' => $order_details,
+        'table' => $table,
+        'remark' => $final_remark, // เพิ่ม remark
+        'type' => 'order_admin'
+    ];
+    return view('print_web', ['jsonData' => json_encode($data)]);
+}
 
     public function printOrderAdminCook($table_id)
-    {
-        $config = Config::first();
-        $orders = Orders::where('table_id', $table_id)
-            ->whereIn('status', [1, 2])
-            ->get();
-        // Update print flag for these orders
-        Orders::where('table_id', $table_id)
-            ->whereIn('status', [1, 2])
-            ->update(['is_print_cook' => 1]);
+{
+    $config = Config::first();
+    $orders = Orders::where('table_id', $table_id)
+        ->whereIn('status', [1, 2])
+        ->get();
+    
+    Orders::where('table_id', $table_id)
+        ->whereIn('status', [1, 2])
+        ->update(['is_print_cook' => 1]);
 
-        $order_details = [];
-        foreach ($orders as $order) {
-            $details = OrdersDetails::where('order_id', $order->id)
-                ->with('menu', 'option.option')
-                ->get();
-            $order_details = array_merge($order_details, $details->toArray());
+    $order_details = [];
+    $combined_remark = '';
+    $menu_remarks = [];
+    
+    foreach ($orders as $order) {
+        if (!empty($order->remark)) {
+            $combined_remark = $order->remark;
         }
-
-        $table = Table::find($table_id);
-
-        $data = [
-            'config' => $config,
-            'orders' => $orders,
-            'order_details' => $order_details,
-            'table' => $table,
-            'type' => 'order_cook'
-        ];
-        return view('print_web', ['jsonData' => json_encode($data)]);
+        
+        $details = OrdersDetails::where('order_id', $order->id)
+            ->with('menu', 'option.option')
+            ->get();
+            
+        foreach ($details as $detail) {
+            if (!empty($detail->remark)) {
+                $menu_remarks[] = $detail->menu->name . ': ' . $detail->remark;
+            }
+        }
+        
+        $order_details = array_merge($order_details, $details->toArray());
     }
+    
+    $final_remark = '';
+    if (!empty($combined_remark)) {
+        $final_remark = $combined_remark;
+    }
+    if (!empty($menu_remarks)) {
+        if (!empty($final_remark)) {
+            $final_remark .= ' | ';
+        }
+        $final_remark .= implode(' | ', $menu_remarks);
+    }
+
+    $table = Table::find($table_id);
+
+    $data = [
+        'config' => $config,
+        'orders' => $orders,
+        'order_details' => $order_details,
+        'table' => $table,
+        'remark' => $final_remark,
+        'type' => 'order_cook'
+    ];
+    return view('print_web', ['jsonData' => json_encode($data)]);
+}
     public function checkNewOrders()
     {
         $order = Orders::with(['details.menu', 'table'])
@@ -871,14 +927,11 @@ foreach ($orderList as $order) {
     return view('print_web', ['jsonData' => json_encode($data)]);
 }
 
-    /**
-     * แก้ไข ListOrderPay ให้ถูกต้อง - ดึงรายการจาก Pay table และ Orders table
-     */
 
     public function listOrderDetailPay(Request $request)
     {
         $id = $request->input('id');
-        $type = $request->input('type', 'pay'); // ระบุว่าเป็นข้อมูลจาก pay หรือ order
+        $type = $request->input('type', 'pay'); 
 
         $info = '';
 
@@ -912,7 +965,6 @@ foreach ($orderList as $order) {
                     $info .= '<div class="mb-3">';
                     $info .= '<div class="row"><div class="col d-flex align-items-end"><h5 class="text-primary mb-2">เลขออเดอร์ #: ' . $id . '</h5></div></div>';
 
-                    // แสดงข้อมูลสลิป
                     if ($order->image) {
                         $info .= '<div class="alert alert-info">
                         <strong>สลิปการโอนเงิน:</strong> 
@@ -974,46 +1026,74 @@ foreach ($orderList as $order) {
         }
     }
     public function printReceipt($id)
-    {
-        $config = Config::first();
-        $pay = Pay::with('user')->find($id);
-        $paygroup = PayGroup::where('pay_id', $id)->get();
-        $order_id = array();
+{
+    $config = Config::first();
+    $pay = Pay::with('user')->find($id);
+    $paygroup = PayGroup::where('pay_id', $id)->get();
+    $order_id = array();
 
-        foreach ($paygroup as $rs) {
-            $order_id[] = $rs->order_id;
-        }
-
-        $item_id = '';
-        if (empty($pay->table_id)) {
-            $item_id = $order_id[0];
-        }
-
-        $order = OrdersDetails::whereIn('order_id', $order_id)
-            ->with('menu', 'option.option')
-            ->get();
-
-        $users = null;
-        if ($item_id) {
-            $users = Orders::select('users.*', 'users_addresses.name as address_name', 'users_addresses.tel as address_tel')
-                ->join('users', 'orders.users_id', '=', 'users.id')
-                ->leftJoin('users_addresses', function ($join) {
-                    $join->on('users.id', '=', 'users_addresses.users_id')
-                        ->where('users_addresses.is_use', 1);
-                })
-                ->find($item_id);
-        }
-
-        $data = [
-            'config' => $config,
-            'pay' => $pay,
-            'order' => $order,
-            'users' => $users,
-            'type' => 'normal'
-        ];
-
-        return view('print_web', ['jsonData' => json_encode($data)]);
+    foreach ($paygroup as $rs) {
+        $order_id[] = $rs->order_id;
     }
+
+    $item_id = '';
+    if (empty($pay->table_id)) {
+        $item_id = $order_id[0];
+    }
+
+    $order = OrdersDetails::whereIn('order_id', $order_id)
+        ->with('menu', 'option.option')
+        ->get();
+
+    $users = null;
+    if ($item_id) {
+        $users = Orders::select('users.*', 'users_addresses.name as address_name', 'users_addresses.tel as address_tel')
+            ->join('users', 'orders.users_id', '=', 'users.id')
+            ->leftJoin('users_addresses', function ($join) {
+                $join->on('users.id', '=', 'users_addresses.users_id')
+                    ->where('users_addresses.is_use', 1);
+            })
+            ->find($item_id);
+    }
+    
+    $orders = Orders::whereIn('id', $order_id)->get();
+    $combined_remark = '';
+    $menu_remarks = [];
+    
+    foreach ($orders as $orderItem) {
+        if (!empty($orderItem->remark)) {
+            $combined_remark = $orderItem->remark;
+        }
+    }
+    
+    foreach ($order as $detail) {
+        if (!empty($detail->remark)) {
+            $menu_remarks[] = $detail->menu->name . ': ' . $detail->remark;
+        }
+    }
+    
+    $final_remark = '';
+    if (!empty($combined_remark)) {
+        $final_remark = $combined_remark;
+    }
+    if (!empty($menu_remarks)) {
+        if (!empty($final_remark)) {
+            $final_remark .= ' | ';
+        }
+        $final_remark .= implode(' | ', $menu_remarks);
+    }
+
+    $data = [
+        'config' => $config,
+        'pay' => $pay,
+        'order' => $order,
+        'users' => $users,
+        'remark' => $final_remark, 
+        'type' => 'normal'
+    ];
+
+    return view('print_web', ['jsonData' => json_encode($data)]);
+}
     public function printReceiptfull($id)
     {
         $get = $_GET;
