@@ -26,7 +26,11 @@
     z-index: 100;
     margin: -15px -15px 15px -15px;
 }
-
+.btn-primary {
+    background: linear-gradient(to right, {{ $config->color1 ?? '#007bff' }}, {{ $config->color2 ?? '#0056b3' }}) !important;
+    border: none !important;
+    color: white !important;
+}
 .page-title {
     color: white;
     font-size: 24px;
@@ -133,7 +137,7 @@
 
 .category-pill.active {
     background: white;
-    color: {{ $config->color1 ?? '#00bcd4' }};
+    color: #00bcd4;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
 
@@ -216,7 +220,7 @@
 .title-food {
     font-size: 30px;
     font-weight: bold;
-    color: {{ $config->color_font ?? '#000000' }};
+    color: #000000;
 }
 
 .card-food {
@@ -228,7 +232,6 @@
 
 .card-title {
     font-size: 15px;
-    color: {{ $config->color_font ?? '#000000' }};
 }
 
 /* Product Card */
@@ -248,7 +251,7 @@
     bottom: 5px;
     right: 20px;
     transform: translateX(50%);
-    border: 1px solid {{ $config->color1 ?? '#30acff' }};
+    border: 1px solid #30acff;
     background-color: #ffffff;
     color: rgb(0, 0, 0);
     padding: 2px 10px;
@@ -258,10 +261,10 @@
 }
 
 .amount-custom {
-    border: 1px solid {{ $config->color1 ?? '#30acff' }};
+    border: 1px solid #30acff;
     border-radius: 50%;
     padding: 0px 8px;
-    color: {{ $config->color1 ?? '#30acff' }};
+    color: #30acff;
 }
 
 
@@ -298,8 +301,8 @@
 }
 
 .btn-plus {
-    background: linear-gradient(135deg, {{ $config->color1 ?? '#82f3fd' }}, {{ $config->color2 ?? '#b2f9ff' }});
-    color: #ffffff;
+    background-color: #82f3fd;
+    color: #ffff;
     border-radius: 50%;
     border: 0px solid #333;
     font-size: 20px;
@@ -309,8 +312,8 @@
 }
 
 .btn-minus {
-    background: linear-gradient(135deg, {{ $config->color1 ?? '#82f3fd' }}, {{ $config->color2 ?? '#b2f9ff' }});
-    color: #ffffff;
+    background-color: #b2f9ff;
+    color: #ffff;
     border-radius: 50%;
     border: 0px solid #333;
     font-size: 20px;
@@ -383,18 +386,6 @@
 
 .item-card:hover {
     background-color: #f8f9fa;
-}
-
-/* ปุ่มหลักตาม config */
-.btn-primary {
-    background: linear-gradient(to right, {{ $config->color1 ?? '#007bff' }}, {{ $config->color2 ?? '#0056b3' }}) !important;
-    border: none !important;
-    color: white !important;
-}
-
-.btn-primary:hover {
-    background: linear-gradient(to right, {{ $config->color2 ?? '#0056b3' }}, {{ $config->color1 ?? '#007bff' }}) !important;
-    transform: translateY(-1px);
 }
 
 
@@ -793,8 +784,7 @@
         function highlightText(text, query) {
             if (!query.trim()) return text;
             
-            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\                resultItem.addEventListener('click', function() {
-                    const menuCard = document.querySelector(`[data-id="${item.id}"]`')})`, 'gi');
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
             return text.replace(regex, '<span class="search-highlight">$1</span>');
         }
         
