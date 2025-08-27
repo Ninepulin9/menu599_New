@@ -293,62 +293,70 @@ public function printOrderAdmin($table_id)
     return view('print_web', ['jsonData' => json_encode($data)]);
 }
 
-    public function printOrderAdminCook($table_id)
-{
-    $config = Config::first();
-    $orders = Orders::where('table_id', $table_id)
-        ->whereIn('status', [1, 2])
-        ->get();
-    
-    Orders::where('table_id', $table_id)
-        ->whereIn('status', [1, 2])
-        ->update(['is_print_cook' => 1]);
+   public function printOrderAdminCook($id)
+    {
+        $config = Config::first();
 
-    $order_details = [];
-    $combined_remark = '';
-    $menu_remarks = [];
-    
-    foreach ($orders as $order) {
-        if (!empty($order->remark)) {
-            $combined_remark = $order->remark;
+    // ลองค้นหาออเดอร์จาก table_id ก่อน หากไม่มีให้ค้นหาจาก order id
+        $query = Orders::where('table_id', $id)->whereIn('status', [1, 2]);
+        $orders = $query->get();
+
+        if ($orders->isEmpty()) {
+            $query = Orders::where('id', $id)->whereIn('status', [1, 2]);
+            $orders = $query->get();
         }
         
-        $details = OrdersDetails::where('order_id', $order->id)
-            ->with('menu', 'option.option')
-            ->get();
-            
-        foreach ($details as $detail) {
-            if (!empty($detail->remark)) {
-                $menu_remarks[] = $detail->menu->name . ': ' . $detail->remark;
+        // ทำเครื่องหมายว่าออเดอร์ถูกพิมพ์แล้ว
+        $query->update(['is_print_cook' => 1]);
+
+        $order_details = [];
+        $combined_remark = '';
+        $menu_remarks = [];
+
+        foreach ($orders as $order) {
+            if (!empty($order->remark)) {
+                $combined_remark = $order->remark;
             }
+            $details = OrdersDetails::where('order_id', $order->id)
+                ->with('menu', 'option.option')
+                ->get();
+
+            foreach ($details as $detail) {
+                if (!empty($detail->remark)) {
+                    $menu_remarks[] = $detail->menu->name . ': ' . $detail->remark;
+                }
+            }
+
+            $order_details = array_merge($order_details, $details->toArray());
         }
         
-        $order_details = array_merge($order_details, $details->toArray());
-    }
-    
-    $final_remark = '';
-    if (!empty($combined_remark)) {
-        $final_remark = $combined_remark;
-    }
-    if (!empty($menu_remarks)) {
-        if (!empty($final_remark)) {
-            $final_remark .= ' | ';
+        $final_remark = '';
+        if (!empty($combined_remark)) {
+            $final_remark = $combined_remark;
         }
-        $final_remark .= implode(' | ', $menu_remarks);
+        if (!empty($menu_remarks)) {
+            if (!empty($final_remark)) {
+                $final_remark .= ' | ';
+            }
+            $final_remark .= implode(' | ', $menu_remarks);
+        }
+        $table = null;
+        if ($orders->first() && $orders->first()->table_id) {
+            $table = Table::find($orders->first()->table_id);
+        }
+
+        $data = [
+            'config' => $config,
+            'orders' => $orders,
+            'order_details' => $order_details,
+            'table' => $table,
+            'remark' => $final_remark,
+            'type' => 'order_cook'
+        ];
+        return view('print_web', ['jsonData' => json_encode($data)]);
     }
 
-    $table = Table::find($table_id);
-
-    $data = [
-        'config' => $config,
-        'orders' => $orders,
-        'order_details' => $order_details,
-        'table' => $table,
-        'remark' => $final_remark,
-        'type' => 'order_cook'
-    ];
-    return view('print_web', ['jsonData' => json_encode($data)]);
-}
+    
     public function checkNewOrders()
     {
         $order = Orders::with(['details.menu', 'table'])
@@ -358,9 +366,15 @@ public function printOrderAdmin($table_id)
             ->first();
 
         if ($order) {
-            Orders::where('table_id', $order->table_id)
-                ->where('is_print_cook', 0)
-                ->update(['is_print_cook' => 1]);
+            if ($order->table_id) {
+                Orders::where('table_id', $order->table_id)
+                    ->where('is_print_cook', 0)
+                    ->update(['is_print_cook' => 1]);
+            } else {
+                $order->is_print_cook = 1;
+                $order->save();
+            }
+
             $items = $order->details->map(function ($d) {
                 $name = $d->menu->name ?? '';
                 return trim($name . ' x' . $d->quantity);
@@ -369,6 +383,7 @@ public function printOrderAdmin($table_id)
             return response()->json([
                 'status' => true,
                 'table_id' => $order->table_id,
+                'order_id' => $order->id,
                 'order' => [
                     'id' => $order->id,
                     'table_id' => $order->table_id,

@@ -224,12 +224,14 @@
                         if (res.order) {
                             showOrderNotification(res.order);
                         }
-                        if (res.table_id) {
-                            const channelMeta = document.querySelector('meta[name="app-channel"]');
-                            const deviceMeta = document.querySelector('meta[name="app-device"]');
-                            const channel = channelMeta ? channelMeta.content : '';
-                            const device = deviceMeta ? deviceMeta.content : '';
-                            const printUrl = `/admin/order/printOrderAdminCook/${res.table_id}?channel=${channel}&device=${device}`;
+                        const channelMeta = document.querySelector('meta[name="app-channel"]');
+                        const deviceMeta = document.querySelector('meta[name="app-device"]');
+                        const channel = channelMeta ? channelMeta.content : '';
+                        const device = deviceMeta ? deviceMeta.content : '';
+
+                        const targetId = res.table_id ?? res.order_id;
+                        if (targetId) {
+                            const printUrl = `/admin/order/printOrderAdminCook/${targetId}?channel=${channel}&device=${device}`;
                             try {
                                 sessionStorage.setItem('admin-prev-url', window.location.href);
                             } catch (e) {
