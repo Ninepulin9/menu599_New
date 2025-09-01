@@ -363,6 +363,15 @@
         });
     });
 
+    // Preview receipt for rider payments (open in new tab)
+    $(document).on('click', '.preview-short', function(e) {
+        e.preventDefault();
+        var id = $(this).data('id'); // pay id
+        if (!id) return;
+        var url = '{{ route("printReceipt", ":id") }}'.replace(':id', id);
+        window.open(url, '_blank');
+    });
+
     $(document).on('click', '.modalPay', function(e) {
         var total = $(this).data('total');
         var id = $(this).data('id');
@@ -413,6 +422,10 @@
                 if (response.status == true) {
                     Swal.fire(response.message, "", "success");
                     $('#myTable').DataTable().ajax.reload(null, false);
+                    // Refresh payment list as well
+                    if ($.fn.DataTable.isDataTable('#myTable2')) {
+                        $('#myTable2').DataTable().ajax.reload(null, false);
+                    }
                 } else {
                     Swal.fire(response.message, "", "error");
                 }

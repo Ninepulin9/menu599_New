@@ -578,6 +578,60 @@ private function sendPaymentNotification($tableId, $pay, $paymentType)
 }
     public function confirm_pay_rider(Request $request)
     {
+        // Inserted: create Pay/PayGroup and mark order as paid for rider orders
+        $data = [
+            'status' => false,
+            'message' => 'ไม่สามารถบันทึกการชำระเงินได้',
+        ];
+
+        try {
+            $id = $request->input('id');
+            $paymentType = (int) $request->input('value', 0);
+
+            if (!$id) {
+                return response()->json($data);
+            }
+
+            $order = Orders::find($id);
+            if (!$order) {
+                return response()->json($data);
+            }
+
+            DB::beginTransaction();
+
+            // Update order flags and status (similar to rider flow)
+            $order->is_pay = 1;
+            $order->is_type = $paymentType;
+            $order->status = 3;
+            $order->save();
+
+            // Create pay record (no table_id for rider orders)
+            $pay = new Pay();
+            $pay->payment_number = $this->generateRunningNumber();
+            $pay->user_id = $order->users_id;
+            $pay->total = $order->total;
+            $pay->is_type = $paymentType;
+            $pay->save();
+
+            // Link pay to this order
+            $pg = new PayGroup();
+            $pg->pay_id = $pay->id;
+            $pg->order_id = $order->id;
+            $pg->save();
+
+            DB::commit();
+
+            $data = [
+                'status' => true,
+                'message' => 'บันทึกการชำระเงินสำเร็จ',
+            ];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('confirm_pay_rider error: ' . $e->getMessage());
+            $data['message'] = 'ไม่สามารถบันทึกการชำระเงินได้: ' . $e->getMessage();
+        }
+
+        return response()->json($data);
         $data = [
             'status' => false,
             'message' => 'ชำระเงินไม่สำเร็จ',
